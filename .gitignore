@@ -17,8 +17,8 @@ Cargo.lock
 *.swp
 *.swo
 
-# Output directory for JSON files
-set_data_json_txt/
+# Output directory for generated card data
+script_generated_card_data/
 
 # Environment files
 .env

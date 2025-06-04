@@ -2,6 +2,8 @@ use std::error::Error;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
+use std::collections::HashMap;
+use chrono::{DateTime, Local};
 
 // Base URL for fetching card set data from the API
 const BASE_API_URL: &str = "https://cards.fabtcg.com/api/search/v1/cards/?set_code=";
@@ -84,6 +86,8 @@ fn save_data_to_file(filename: &str, data: &str) -> Result<(), Box<dyn Error>> {
 
 /// Main function to drive the script.
 fn main() -> Result<(), Box<dyn Error>> {
+    let script_launch_time: DateTime<Local> = Local::now();
+    
     println!(
         "Flesh and Blood Card API Data Collector\nReading set codes from: {}",
         SET_CODES_FILENAME
@@ -107,31 +111,59 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Found {} set codes to process.", set_codes.len());
 
-    // Create a directory for output files if it doesn't exist
-    let output_dir = "set_data_json_txt"; // Changed directory name
-    if !Path::new(output_dir).exists() {
-        fs::create_dir(output_dir)?;
-        println!("Created output directory: {}", output_dir);
+    // Create directories for output files if they don't exist
+    let base_output_dir = "script_generated_card_data";
+    let txt_output_dir = format!("{}/txt", base_output_dir);
+    let json_output_dir = format!("{}/json", base_output_dir);
+    
+    if !Path::new(base_output_dir).exists() {
+        fs::create_dir(base_output_dir)?;
+        println!("Created base output directory: {}", base_output_dir);
+    }
+    if !Path::new(&txt_output_dir).exists() {
+        fs::create_dir(&txt_output_dir)?;
+        println!("Created txt output directory: {}", txt_output_dir);
+    }
+    if !Path::new(&json_output_dir).exists() {
+        fs::create_dir(&json_output_dir)?;
+        println!("Created json output directory: {}", json_output_dir);
     }
 
+    // HashMap to store all set data for the combined file
+    let mut all_sets_data: HashMap<String, String> = HashMap::new();
 
     // Process each set code
-    for set_code in set_codes {
+    for set_code in &set_codes {
         println!("\nProcessing set: {}", set_code);
-        match fetch_set_json_data(&set_code) {
+        match fetch_set_json_data(set_code) {
             Ok(json_content) => {
-                // Construct the output filename, placing it in the output directory
-                // Save as .txt as requested
-                let output_filename = format!("{}/{}_cards.txt", output_dir, set_code.trim()); 
-                println!("Saving JSON data to: {}", output_filename);
+                // Construct the output filenames for both txt and json versions
+                let txt_filename = format!("{}/{}_cards.txt", txt_output_dir, set_code.trim()); 
+                let json_filename = format!("{}/{}_cards.json", json_output_dir, set_code.trim()); 
+                
+                println!("Saving data to: {} and {}", txt_filename, json_filename);
 
-                if let Err(e) = save_data_to_file(&output_filename, &json_content) {
-                    eprintln!(
-                        "Error saving file {}: {}. Skipping this set.",
-                        output_filename, e
-                    );
+                // Save txt version
+                let mut txt_success = false;
+                if let Err(e) = save_data_to_file(&txt_filename, &json_content) {
+                    eprintln!("Error saving txt file {}: {}", txt_filename, e);
                 } else {
-                    println!("Successfully saved {}", output_filename);
+                    println!("Successfully saved {}", txt_filename);
+                    txt_success = true;
+                }
+
+                // Save json version
+                let mut json_success = false;
+                if let Err(e) = save_data_to_file(&json_filename, &json_content) {
+                    eprintln!("Error saving json file {}: {}", json_filename, e);
+                } else {
+                    println!("Successfully saved {}", json_filename);
+                    json_success = true;
+                }
+
+                // Store the data for the combined file if at least one save was successful
+                if txt_success || json_success {
+                    all_sets_data.insert(set_code.trim().to_string(), json_content);
                 }
             }
             Err(e) => {
@@ -147,6 +179,70 @@ fn main() -> Result<(), Box<dyn Error>> {
         std::thread::sleep(std::time::Duration::from_millis(500)); // 500ms delay
     }
 
-    println!("\nFinished processing all set codes. JSON data (saved as .txt) files are in the '{}' directory.", output_dir);
+    // Create the combined files with all sets data
+    if !all_sets_data.is_empty() {
+        println!("\nCreating combined files with all sets data...");
+        let combined_txt_filename = format!("{}/all_sets_combined.txt", txt_output_dir);
+        let combined_json_filename = format!("{}/all_sets_combined.json", json_output_dir);
+        
+        // Create a JSON object with all sets
+        let mut combined_json = String::from("{\n");
+        let mut first = true;
+        for (set_code, json_data) in &all_sets_data {
+            if !first {
+                combined_json.push_str(",\n");
+            }
+            combined_json.push_str(&format!("  \"{}\": {}", set_code, json_data));
+            first = false;
+        }
+        combined_json.push_str("\n}");
+        
+        // Save combined txt version
+        if let Err(e) = save_data_to_file(&combined_txt_filename, &combined_json) {
+            eprintln!("Error saving combined txt file {}: {}", combined_txt_filename, e);
+        } else {
+            println!("Successfully saved combined txt file: {}", combined_txt_filename);
+        }
+
+        // Save combined json version
+        if let Err(e) = save_data_to_file(&combined_json_filename, &combined_json) {
+            eprintln!("Error saving combined json file {}: {}", combined_json_filename, e);
+        } else {
+            println!("Successfully saved combined json file: {}", combined_json_filename);
+        }
+    }
+
+    // Create metadata file with script info
+    let unknown_set = String::from("UNKNOWN");
+    let latest_set = set_codes.last().unwrap_or(&unknown_set);
+    let metadata_filename = format!("{}/script_metadata.txt", base_output_dir);
+    let metadata_content = format!(
+        "FAB Card Scrapper - Script Execution Metadata\n\
+        =============================================\n\
+        Script Launch Time: {}\n\
+        Latest Set Processed: {}\n\
+        Total Sets Processed: {}\n\
+        Sets List: {}\n\
+        Output Structure:\n\
+        - TXT files: {}/\n\
+        - JSON files: {}/\n",
+        script_launch_time.format("%Y-%m-%d %H:%M:%S %Z"),
+        latest_set,
+        all_sets_data.len(),
+        set_codes.join(", "),
+        txt_output_dir,
+        json_output_dir
+    );
+    
+    if let Err(e) = save_data_to_file(&metadata_filename, &metadata_content) {
+        eprintln!("Warning: Could not save metadata file {}: {}", metadata_filename, e);
+    } else {
+        println!("Created metadata file: {}", metadata_filename);
+    }
+
+    println!("\nFinished processing all set codes. Files are organized in '{}' directory:", base_output_dir);
+    println!("  - TXT files: {}/", txt_output_dir);
+    println!("  - JSON files: {}/", json_output_dir);
+    println!("  - Metadata: {}", metadata_filename);
     Ok(())
 }
