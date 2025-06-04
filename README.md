@@ -5,7 +5,9 @@ A Rust-based tool for collecting card data from the Flesh and Blood Trading Card
 ## Features
 
 - Fetches card data for specific set codes
-- Saves card data in JSON format (as .txt files)
+- Saves card data in both JSON and TXT formats in separate folders
+- Creates a combined file with all sets data
+- Generates metadata file with script execution details
 - Handles API rate limiting with polite delays
 - Error handling and logging
 - Supports batch processing of multiple set codes
@@ -15,6 +17,11 @@ A Rust-based tool for collecting card data from the Flesh and Blood Trading Card
 - Rust (edition 2024)
 - Cargo (Rust's package manager)
 - Internet connection to access the FAB TCG API
+
+## Dependencies
+
+- `reqwest` - For HTTP requests to the FAB TCG API
+- `chrono` - For timestamp generation in metadata files
 
 ## Installation
 
@@ -36,8 +43,18 @@ cargo build --release
 ```
 WTR
 ARC
-CRU
 MON
+ELE
+UPR
+DYN
+OUT
+DTD
+EVO
+HVY
+MST
+ROS
+HNT
+SEA
 ```
 
 3. Run the program:
@@ -47,9 +64,13 @@ cargo run --release
 
 The program will:
 - Read set codes from `sets_codes.txt`
-- Create a `set_data_json_txt` directory
+- Create a `script_generated_card_data` directory with two subdirectories:
+  - `txt/` - Contains .txt versions of all files
+  - `json/` - Contains .json versions of all files
 - Fetch data for each set code
-- Save the results as `{SET_CODE}_cards.txt` in the output directory
+- Save individual results as `{SET_CODE}_cards.txt` and `{SET_CODE}_cards.json`
+- Create combined files `all_sets_combined.txt` and `all_sets_combined.json`
+- Generate a `script_metadata.txt` file with execution details and latest set information
 
 ## Set Codes
 
@@ -64,9 +85,32 @@ Common set codes include:
 - DYN: Dynasty
 - OUT: Outsiders
 - HVY: Heavy Hitters
-- HER: History Pack 1
 - DTD: Dusk till Dawn
-- THS: The High Seas
+- EVO: Bright Lights
+- HVY: Heavy Hitters
+- MST: Part the Mistveil
+- ROS: Rosetta
+- HNT: The Hunted
+- SEA: Battles of Legend
+
+## Output Structure
+
+After running the script, you'll find the following structure:
+
+```
+script_generated_card_data/
+├── script_metadata.txt          # Execution metadata and latest set info
+├── txt/
+│   ├── WTR_cards.txt           # Individual set files
+│   ├── ARC_cards.txt
+│   ├── ...
+│   └── all_sets_combined.txt   # Combined data from all sets
+└── json/
+    ├── WTR_cards.json          # Same data as JSON files
+    ├── ARC_cards.json
+    ├── ...
+    └── all_sets_combined.json  # Combined JSON data
+```
 
 ## Error Handling
 
@@ -75,6 +119,7 @@ The program includes robust error handling for common issues:
 - Network connectivity problems
 - API rate limiting
 - File system operations
+- Partial failures (continues processing other sets if one fails)
 
 ## Contributing
 
